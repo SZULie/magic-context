@@ -371,9 +371,26 @@ function formatCheckedPaths(checkedPaths: readonly string[]): string {
 		: visible.join(", ");
 }
 
+export function isPiWebEnvironment(): boolean {
+	return Boolean(
+		process.env.PI_WEB ||
+			process.env.PI_WEB_AGEGR ||
+			(process.argv[1] && /(pi-web|next)/i.test(process.argv[1])),
+	);
+}
+
 function resolvePiInvocation(
 	options: ResolvePiInvocationOptions = {},
 ): PiInvocation {
+	if (isPiWebEnvironment() && !options.piBinary && !process.env.PI_BINARY) {
+		return {
+			command: "pi",
+			prefixArgs: [],
+			targetHarness: "pi",
+			fallbackDiagnostic: "resolved via pi-web environment detection",
+		};
+	}
+
 	const fs = { ...DEFAULT_PI_RESOLUTION_FS, ...options.fs } as PiResolutionFs;
 	const execPath = options.execPath ?? process.execPath;
 	const currentScript = options.argv1 ?? process.argv[1];
@@ -1020,7 +1037,8 @@ export class PiSubagentRunner implements SubagentRunner {
 		options: SubagentRunOptions,
 		modelRefOverride?: string,
 	): Promise<ExtensionRetryResult> {
-		const primaryRunMode: PiRunMode = { disableDiscoveredExtensions: false };
+		const isPiWeb = isPiWebEnvironment();
+		const primaryRunMode: PiRunMode = { disableDiscoveredExtensions: isPiWeb };
 		const primaryResult = await this.runModelChain(
 			options,
 			primaryRunMode,
@@ -2310,9 +2328,29 @@ function isSilentNoAssistantFailure(
 function isIsolatedRetryTrigger(
 	result: SubagentRunResult,
 ): result is FailedRunResult {
-	return (
-		isPiExtensionCollisionFailure(result) || isSilentNoAssistantFailure(result)
-	);
+	if (
+		isPiExtensionCollisionFailure(result) ||
+		isSilentNoAssistantFailure(result)
+	) {
+		return true;
+	}
+	if (!result.ok) {
+		const err = (result.error ?? "").toLowerCase();
+		const stderr = (getResultStderr(result) ?? "").toLowerCase();
+		if (
+			err.includes("action methods cannot be called") ||
+			err.includes("extension runtime not initialized") ||
+			stderr.includes("action methods cannot be called") ||
+			stderr.includes("extension runtime not initialized") ||
+			err.includes("cannot find module") ||
+			stderr.includes("cannot find module") ||
+			err.includes("unknown option") ||
+			stderr.includes("unknown option")
+		) {
+			return true;
+		}
+	}
+	return false;
 }
 
 /** Pick the accurate log message for whichever trigger fired the isolated retry. */
@@ -2481,11 +2519,11 @@ export function buildArgs(
 	];
 	if (
 		opts?.disableDiscoveredExtensions ||
-		opts?.subagentExtensions !== undefined
+		opts?.subagentExtensions !== undefined ||
+		isPiWebEnvironment()
 	) {
-		// When an allowlist is active, or when the collision retry asks for an
-		// isolated child, disable auto-discovered extensions. Explicit entries are
-		// added below in their configured order.
+		// When an allowlist is active, or when running under pi-web, or when the
+		// collision retry asks for an isolated child, disable auto-discovered extensions.
 		args.push("--no-extensions");
 	}
 

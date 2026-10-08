@@ -138,6 +138,7 @@ describe("loadDefaultPiSessionApi", () => {
 			const names = defaultLoaders.map((l) => l.name);
 			expect(names).toEqual([
 				"Resolve from running Pi binary entry",
+				"Resolve from Pi-Web node_modules",
 				"Bare import",
 				"Bare import (OMP)",
 			]);

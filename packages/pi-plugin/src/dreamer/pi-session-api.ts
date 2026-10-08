@@ -295,6 +295,27 @@ export const defaultLoaders: ModuleLoader[] = [
 		},
 	},
 	{
+		name: "Resolve from Pi-Web node_modules",
+		load: async () => {
+			const candidates = [
+				join(process.cwd(), "node_modules", PI_CODING_AGENT_MODULE),
+				join(homedir(), "pi-web-agegr", "node_modules", PI_CODING_AGENT_MODULE),
+				join(homedir(), "agy", "pi-web", "node_modules", PI_CODING_AGENT_MODULE),
+			];
+			for (const c of candidates) {
+				const pkgJson = join(c, "package.json");
+				if (existsSync(pkgJson)) {
+					const found = findPackageRoot(c);
+					if (found) {
+						const entry = resolveManifestEntry(found);
+						return await import(pathToFileURL(entry).href);
+					}
+				}
+			}
+			throw new Error("pi-coding-agent not found in Pi-Web candidate locations");
+		},
+	},
+	{
 		name: "Bare import",
 		load: async () => await import(/* @vite-ignore */ PI_CODING_AGENT_MODULE),
 	},
