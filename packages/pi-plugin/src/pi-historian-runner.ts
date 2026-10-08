@@ -1183,6 +1183,12 @@ export async function runPiHistorian(deps: PiHistorianDeps): Promise<void> {
 			}
 
 			if (validatedPass.kind !== "ok") {
+				if (validatedPass.kind === "spawn-failed" && validatedPass.reason === "abort") {
+					sessionLog(sessionId, "historian run aborted by caller");
+					rollbackDrainReservation();
+					return;
+				}
+
 				const errorMsg =
 					validatedPass.kind === "validation-failed"
 						? validatedPass.error
@@ -1717,7 +1723,10 @@ export async function runPiHistorian(deps: PiHistorianDeps): Promise<void> {
 			sessionId,
 			`historian failure: source=exception ${desc.brief}${desc.stackHead ? ` stackHead="${desc.stackHead}"` : ""}`,
 		);
-		if (!issueNotified) {
+		const isAbort =
+			desc.brief.toLowerCase().includes("abort") ||
+			(error instanceof Error && error.name === "AbortError");
+		if (!issueNotified && !isAbort) {
 			const failCount = incrementHistorianFailure(db, sessionId, desc.brief);
 			await notify(buildHistorianFailureNotice(failCount, desc.brief));
 		}
